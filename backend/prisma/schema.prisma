@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  ACCOUNTS
+  SUPPORT
+  SALES
+  VIEWER
+}
+
+enum DeviceStatus {
+  AVAILABLE
+  ASSIGNED
+  REMOVED
+  FAULTY
+  TRANSFER_AVAILABLE
+}
+
+enum DeviceOwnership {
+  OWNED
+  LEASING
+}
+
+enum JobType {
+  NEW_INSTALLATION
+  REMOVAL
+  DEVICE_REPLACEMENT
+  TRANSFER_INSTALLATION
+}
+
+enum RenewalStatus {
+  UPCOMING
+  DUE
+  OVERDUE
+  RENEWED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(VIEWER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments      Assignment[]
+  replacements     Replacement[]
+  removals         Removal[]
+  renewalActions   Renewal[]
+  tasksAssigned    Task[]        @relation("AssignedTasks")
+  tasksCreated     Task[]        @relation("CreatedTasks")
+  activityLogs     ActivityLog[]
+}
+
+model Device {
+  id           String          @id @default(uuid())
+  brand        String
+  model        String
+  imei         String          @unique
+  serialNumber String?
+  status       DeviceStatus    @default(AVAILABLE)
+  ownership    DeviceOwnership @default(LEASING)
+  clientId     String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  client       Client?      @relation(fields: [clientId], references: [id])
+  assignments  Assignment[]
+  replacements Replacement[] @relation("ReplacedDevice")
+  newDevices   Replacement[] @relation("NewDevice")
+  removals     Removal[]
+}
+
+model SIM {
+  id           String       @id @default(uuid())
+  brand        String
+  number       String       @unique
+  serialNumber String?
+  status       DeviceStatus @default(AVAILABLE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  assignments Assignment[]
+}
+
+model Vehicle {
+  id            String   @id @default(uuid())
+  make          String
+  model         String
+  plateNumber   String   @unique
+  chassisNumber String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignments  Assignment[]
+  replacements Replacement[]
+  removals     Removal[]
+  renewals     Renewal[]
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  devices      Device[]
+  assignments  Assignment[]
+  replacements Replacement[]
+  removals     Removal[]
+  renewals     Renewal[]
+}
+
+model Assignment {
+  id                 String          @id @default(uuid())
+  jobType            JobType
+  deviceId           String
+  simId              String?
+  vehicleId          String
+  clientId           String
+  platform           String
+  installationDate   DateTime
+  activationDate     DateTime
+  certificateExpiry  DateTime
+  subscriptionExpiry DateTime
+  installerName      String
+  location           String
+  accessories        Json? // Array of accessories
+  remarks            String?
+  addedBy            String
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  device      Device   @relation(fields: [deviceId], references: [id])
+  sim         SIM?     @relation(fields: [simId], references: [id])
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+  client      Client   @relation(fields: [clientId], references: [id])
+  user        User     @relation(fields: [addedBy], references: [id])
+  renewals    Renewal[]
+}
+
+model Replacement {
+  id            String   @id @default(uuid())
+  oldDeviceId   String
+  newDeviceId   String
+  vehicleId     String
+  clientId      String
+  reason        String
+  replacedBy    String
+  replacedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  oldDevice Device @relation("ReplacedDevice", fields: [oldDeviceId], references: [id])
+  newDevice Device @relation("NewDevice", fields: [newDeviceId], references: [id])
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+  client    Client  @relation(fields: [clientId], references: [id])
+  user      User    @relation(fields: [replacedBy], references: [id])
+}
+
+model Removal {
+  id         String   @id @default(uuid())
+  deviceId   String
+  vehicleId  String
+  clientId   String
+  reason     String
+  removedBy  String
+  removedAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  device  Device  @relation(fields: [deviceId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+  client  Client  @relation(fields: [clientId], references: [id])
+  user    User    @relation(fields: [removedBy], references: [id])
+}
+
+model Renewal {
+  id                 String        @id @default(uuid())
+  assignmentId       String
+  vehicleId          String
+  clientId           String
+  platform           String
+  activationDate     DateTime
+  certificateExpiry  DateTime
+  subscriptionExpiry DateTime
+  status             RenewalStatus @default(UPCOMING)
+  renewalDate        DateTime?
+  renewalRemarks     String?
+  renewedBy          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  vehicle    Vehicle    @relation(fields: [vehicleId], references: [id])
+  client     Client     @relation(fields: [clientId], references: [id])
+  user       User?      @relation(fields: [renewedBy], references: [id])
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  type        JobType
+  title       String
+  description String?
+  status      TaskStatus @default(PENDING)
+  assignedTo  String?
+  createdBy   String
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  assignee User? @relation("AssignedTasks", fields: [assignedTo], references: [id])
+  creator  User  @relation("CreatedTasks", fields: [createdBy], references: [id])
+}
+
+model Accessory {
+  id          String   @id @default(uuid())
+  type        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Platform {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Installer {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String
+  action      String
+  entity      String
+  entityId    String
+  description String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Certificate {
+  id             String   @id @default(uuid())
+  assignmentId   String?
+  renewalId      String?
+  clientName     String
+  vehiclePlate   String
+  deviceModel    String
+  certificateNo  String   @unique
+  issueDate      DateTime
+  expiryDate     DateTime
+  pdfUrl         String?
+  generatedBy    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
